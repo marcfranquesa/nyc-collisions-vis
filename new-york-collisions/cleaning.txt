@@ -1,0 +1,29 @@
+- CRASH TIME:
+Los valores más habituales estan aproximados a las horas
+Para tener todo más normalizado aproximaremos todos los 
+resultados a las horas
+
+- LATITUDE:
+Borrar la columna, usaremos la columna LOCATION
+
+- LONGITUDE:
+Borrar la columna, mismo motivo que LATITUDE
+
+- LOCATION:
+Borrar las filas con (0.0, 0.0)
+
+- ON STREET NAME:
+Borrar columna
+
+- CROSS STREET NAME:
+Borrar columna
+
+- OFF STREET NAME:
+Borrar columna
+
+Valors NULL:
+- NUMBER OF PERSONS INJURED, NUMBER OF PERSONS KILLED: 0
+- VEHICLE TYPE CODE 1: esborrem
+- LOCATION & BOROUGH: esborrem
+
+Només tindrem Null a BOROUGH, però podrem saber la seva LOCATION
