@@ -8,4 +8,4 @@ Goal is to answer the following questions with adequate visualisations:
 * Is there a correlation between weather conditions and accidents?
 
 ## Data
-Jun-Sep 2018 & Jun-Sep 2020 rows from the [NYC collision dataset](https://data.cityofnewyork.us/Public-Safety/Motor-Vehicle-Collisions-Crashes/h9gi-nx95). Find the dataset in a _csv_ format already filtered by date [here](./data/original-data.csv).
+* Jun-Sep 2018 & Jun-Sep 2020 rows from the [NYC collision dataset](https://data.cityofnewyork.us/Public-Safety/Motor-Vehicle-Collisions-Crashes/h9gi-nx95). Find the dataset in a _csv_ format already filtered by date [here](./original-data/collisions.csv).
