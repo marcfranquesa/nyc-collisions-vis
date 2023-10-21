@@ -1,5 +1,7 @@
 # Collisions in New York City
 
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://nyc-collisions.streamlit.app)
+
 Goal is to answer the following questions with adequate visualisations:
 * Are accidents more frequent during weekdays or weekends? Is there any difference between before COVID-19 and after?
 * Is there any type of vehicle more prone to participate in accidents?
