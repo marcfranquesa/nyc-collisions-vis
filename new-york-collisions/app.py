@@ -290,7 +290,7 @@ class HourChart:
             )
         )
 
-        return time_ch + averages_weekend
+        return (time_ch + averages_weekend).properties(title="Collisions by Hour")
 
 
 class MapChart:
@@ -407,10 +407,7 @@ class WeatherChart:
     def _process_data(
         self, collisions: pd.DataFrame, weather: pd.DataFrame
     ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-        collisions["DATE"] = pd.to_datetime(collisions["CRASH DATETIME"])
-        weather["DATE"] = pd.to_datetime(weather["valid"])
-        collisions_weather = pd.merge(collisions, weather, on="DATE")
-        collisions_weather = collisions_weather[["DATE", *list(self.base.keys())]]
+        collisions_weather = collisions[["CRASH DATETIME", *list(self.base.keys())]]
         dfs = []
         for name, base_value in self.base.items():
             base_bin = collisions_weather.loc[collisions_weather[name] == base_value]
@@ -476,6 +473,94 @@ class WeatherChart:
             .properties(title="Different Weather Conditions", width=481, height=300)
             .resolve_legend(color="independent")
         )
+
+
+class FactorChart:
+    def __init__(
+        self,
+        collisions: pd.DataFrame,
+        main_opactiy: int,
+        secondary_opacity: int,
+    ) -> None:
+        self.main_opactiy = main_opactiy
+        self.secondary_opactiy = secondary_opacity
+
+        self.factors1, self.factors2 = self._process_data(collisions)
+
+    def _process_data(
+        self, collisions: pd.DataFrame
+    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        factors = collisions[["VEHICLE", "FACTOR", "ORIGINAL FACTOR"]]
+        factors1_vehicle = (
+            factors.groupby(["VEHICLE"]).size().reset_index(name="counts_vehicle")
+        )
+        factors1 = (
+            factors.groupby(["VEHICLE", "FACTOR"]).size().reset_index(name="counts")
+        )
+        factors1 = factors1[
+            (factors1["VEHICLE"] != "Unknown") & (factors1["FACTOR"] != "Unspecified")
+        ]
+
+        factors1 = factors1.merge(factors1_vehicle, on="VEHICLE")
+        factors1["PERCENTAGE"] = factors1["counts"] / factors1["counts_vehicle"] * 100
+
+        factors2 = factors[factors["FACTOR"] == "Driving Infraction"]
+        factors2_vehicle = (
+            factors2.groupby(["VEHICLE"]).size().reset_index(name="counts_vehicle")
+        )
+        factors2 = (
+            factors2.groupby(["VEHICLE", "ORIGINAL FACTOR"])
+            .size()
+            .reset_index(name="counts")
+        )
+        factors2 = factors2[(factors2["VEHICLE"] != "Unknown")]
+
+        factors2 = factors2.merge(factors2_vehicle, on="VEHICLE")
+        factors2["PERCENTAGE"] = factors2["counts"] / factors2["counts_vehicle"] * 100
+
+        return factors1, factors2
+
+    def make_plot(self) -> alt.Chart:
+        factors1 = (
+            alt.Chart(self.factors1)
+            .mark_rect()
+            .encode(
+                x=alt.X("FACTOR:O", axis=alt.Axis(title="Factor", labelAngle=30)),
+                y=alt.Y("VEHICLE:O", axis=alt.Axis(title="Vehicle")),
+                color=alt.Color(
+                    "PERCENTAGE:Q",
+                    scale=alt.Scale(scheme="tealblues"),
+                    legend=alt.Legend(title="Percentage of Collisions"),
+                ),
+            )
+            .properties(
+                title="Factors Contributing to Collisions", width=522, height=300
+            )
+        )
+        factors2 = (
+            alt.Chart(self.factors2)
+            .mark_rect()
+            .encode(
+                x=alt.X(
+                    "ORIGINAL FACTOR:O", axis=alt.Axis(title="Factor", labelAngle=30)
+                ),
+                y=alt.Y("VEHICLE:O", axis=alt.Axis(title=None)),
+                color=alt.Color(
+                    "PERCENTAGE:Q",
+                    scale=alt.Scale(scheme="tealblues"),
+                    legend=alt.Legend(
+                        title=["Percentage of Collisions due", "to Driving Infractions"]
+                    ),
+                ),
+            )
+            .properties(
+                title="Driving Infractions contributing to Collisions",
+                width=522,
+                height=300,
+            )
+        )
+
+        return (factors1 | factors2).resolve_legend(color="independent")
 
 
 class Sidebar:
@@ -549,12 +634,18 @@ class Center:
                 self.main_opactiy,
                 self.secondary_opactiy,
             ).make_plot()
+            self.factors = FactorChart(
+                self.collisions,
+                self.main_opactiy,
+                self.secondary_opactiy,
+            ).make_plot()
             st.session_state["charts"] = [
                 self.week,
                 self.vehicles,
                 self.hours,
                 self.map,
                 self.weatherchart,
+                self.factors,
             ]
         else:
             (
@@ -563,24 +654,47 @@ class Center:
                 self.hours,
                 self.map,
                 self.weatherchart,
+                self.factors,
             ) = st.session_state["charts"]
 
     def _load_data(self) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         return (
-            pd.read_csv("./processed-data/collisions.csv"),
-            gpd.read_file("./processed-data/map.geojson"),
-            pd.read_csv("./processed-data/weather.csv"),
+            pd.read_csv("./new-york-collisions/processed-data/collisions.csv"),
+            gpd.read_file("./new-york-collisions/processed-data/map.geojson"),
+            pd.read_csv("./new-york-collisions/processed-data/weather.csv"),
         )
 
     def show(self) -> None:
         self.st.header("📊 New York City Collisions")
 
+        # final_chart = (
+        #     (
+        #         (
+        #             (self.map | (self.week & self.hours))
+        #             & (self.vehicles | self.weatherchart)
+        #             .resolve_scale(color="independent")
+        #             .resolve_legend(size="independent")
+        #         )
+        #         & self.factors
+        #     )
+        #     .resolve_scale(color="independent")
+        #     .resolve_legend(size="independent")
+        # ).configure_legend(symbolOpacity=1)
+
         final_chart = (
-            (self.map | (self.week & self.hours))
-            & (self.vehicles | self.weatherchart)
-            .resolve_scale(color="independent")
+            (
+                (
+                    (self.map & self.vehicles)
+                    .resolve_scale(color="independent")
+                    .resolve_legend(size="independent")
+                    | (self.weatherchart & (self.week & self.hours))
+                )
+                & self.factors
+            )
             .resolve_legend(size="independent")
-        ).configure_legend(symbolOpacity=1)
+            .resolve_scale(color="independent")
+            .configure_legend(symbolOpacity=1)
+        )
 
         with tempfile.NamedTemporaryFile(
             mode="w", delete=False, suffix=".html"
