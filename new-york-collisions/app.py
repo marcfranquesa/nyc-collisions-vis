@@ -201,7 +201,7 @@ class VehiclesChart:
             .encode(
                 x=alt.X(
                     "INJURED PER COLLISION:Q",
-                    axis=alt.Axis(title="Injured per collision", tickCount=10),
+                    axis=alt.Axis(title="Injuries per collision", tickCount=10),
                 ),
                 y=alt.Y(
                     "KILLED PER COLLISION:Q",
