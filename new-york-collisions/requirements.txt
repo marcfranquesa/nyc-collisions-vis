@@ -1,5 +1,5 @@
-pandas
-streamlit
 geopandas
-numpy
 missingno
+numpy
+pandas
+shapelystreamlit
