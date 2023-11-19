@@ -9,7 +9,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 
-class Question1:
+class WeekChart:
     def __init__(
         self,
         collisions: pd.DataFrame,
@@ -60,7 +60,7 @@ class Question1:
             .encode(
                 x=alt.X(
                     "CRASH WEEKDAY:O",
-                    axis=alt.Axis(labelAngle=-30, title=None),
+                    axis=alt.Axis(labelAngle=0, title=None),
                     sort=self.weekdayorder,
                 ),
                 xOffset="MOMENT:O",
@@ -92,7 +92,7 @@ class Question1:
             .encode(
                 x=alt.X(
                     "CRASH WEEKDAY:O",
-                    axis=alt.Axis(labelAngle=-30, title=None),
+                    axis=alt.Axis(labelAngle=0, title=None),
                     sort=self.weekdayorder,
                 ),
                 xOffset="MOMENT:O",
@@ -121,10 +121,12 @@ class Question1:
             .encode(y="mean(counts):Q", size=alt.value(2), color="MOMENT:O")
         )
 
-        return (weekdays_ch + averages_weekday) | (weekends_ch + averages_weekend)
+        return (weekdays_ch + averages_weekday).properties(width=318, height=300) | (
+            weekends_ch + averages_weekend
+        ).properties(width=136, height=300)
 
 
-class Question2:
+class VehiclesChart:
     def __init__(
         self,
         collisions: pd.DataFrame,
@@ -187,13 +189,19 @@ class Question2:
         return vehicles
 
     def make_plot(self) -> alt.Chart:
+        def parse(i):
+            if i < 1000:
+                return f"{i}"
+            return f"{int(i//1000)},{int(i%1000)}"
+
+        legend_labels = f"datum.label == '{parse(self.maximum)}' ? '{parse(self.maximum)}   (max)' : datum.label == '{parse(self.minimum)}' ? '{parse(self.minimum)}        (min)' : '{parse(self.mean)}   (mean)'"
         scatter = (
             alt.Chart(self.vehicles)
             .mark_circle(color=self.colors[self.all_time])
             .encode(
                 x=alt.X(
                     "INJURED PER COLLISION:Q",
-                    axis=alt.Axis(title="Injured per collision"),
+                    axis=alt.Axis(title="Injured per collision", tickCount=10),
                 ),
                 y=alt.Y(
                     "KILLED PER COLLISION:Q",
@@ -203,12 +211,12 @@ class Question2:
                     "COLLISIONS:Q",
                     scale=alt.Scale(range=[10, 700]),
                     legend=alt.Legend(
-                        title="Total collisions (min-mean-max)",
+                        title="Total collisions",
                         values=[self.minimum, self.mean, self.maximum],
+                        labelExpr=legend_labels,
                     ),
                 ),
             )
-            .properties(width=500, height=300)
         )
 
         # Lets add labels for each vehicle
@@ -216,10 +224,12 @@ class Question2:
             text="VEHICLE:N", size=alt.value(10)
         )
 
-        return scatter + labels
+        return (scatter + labels).properties(
+            title="Vehicle Danger", width=590, height=300
+        )
 
 
-class Question3:
+class HourChart:
     def __init__(
         self,
         collisions: pd.DataFrame,
@@ -255,7 +265,9 @@ class Question3:
             alt.Chart(self.time_df)
             .mark_bar(opacity=self.secondary_opactiy)
             .encode(
-                x=alt.X("HOUR:O", axis=alt.Axis(labelAngle=0), title="Hour"),
+                x=alt.X(
+                    "HOUR:O", axis=alt.Axis(labelAngle=0, tickOffset=-10), title="Hour"
+                ),
                 y=alt.Y("counts:Q", title="Collisions / Mean"),
                 color=alt.Color(
                     "MOMENT:O",
@@ -281,7 +293,7 @@ class Question3:
         return time_ch + averages_weekend
 
 
-class Question4:
+class MapChart:
     def __init__(
         self,
         collisions: pd.DataFrame,
@@ -364,7 +376,106 @@ class Question4:
             )
         )
 
-        return base + text_labels + horse + gokart
+        return base + horse + gokart + text_labels
+
+
+class WeatherChart:
+    def __init__(
+        self,
+        collisions: pd.DataFrame,
+        weather: pd.DataFrame,
+        moments: List[str],
+        colors: Dict[str, str],
+        main_opactiy: int,
+        secondary_opacity: int,
+    ) -> None:
+        self.before, self.after, self.all_time = moments
+        self.colors = colors
+        self.main_opactiy = main_opactiy
+        self.secondary_opactiy = secondary_opacity
+
+        self.conditionorder = ["Perfect", "Moderate", "Bad", "Terrible"]
+
+        self.nbins = 3
+        self.base = {
+            "sknt": 0,
+            "p01i": 0,
+            "vsby": 16.093440,
+        }
+        self.weather = self._process_data(collisions, weather)
+
+    def _process_data(
+        self, collisions: pd.DataFrame, weather: pd.DataFrame
+    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        collisions["DATE"] = pd.to_datetime(collisions["CRASH DATETIME"])
+        weather["DATE"] = pd.to_datetime(weather["valid"])
+        collisions_weather = pd.merge(collisions, weather, on="DATE")
+        collisions_weather = collisions_weather[["DATE", *list(self.base.keys())]]
+        dfs = []
+        for name, base_value in self.base.items():
+            base_bin = collisions_weather.loc[collisions_weather[name] == base_value]
+            rest = collisions_weather.loc[collisions_weather[name] != base_value]
+            bins = pd.cut(rest.dropna(subset=[name])[name], bins=self.nbins)
+            midpoints = bins.apply(lambda x: x.mid.round(2))
+            grouped = rest.groupby(midpoints)
+            grouped = grouped.size().reset_index(name="counts")
+            if base_value > 0:
+                grouped = grouped.sort_index(ascending=False)
+
+            df = pd.DataFrame({name: [base_value], "counts": [len(base_bin)]})
+            df = pd.concat([df, grouped]).reset_index(drop=True)
+
+            base_bin_w = weather.loc[weather[name] == base_value]
+            rest_w = weather.loc[weather[name] != base_value]
+            bins_w = pd.cut(rest_w.dropna(subset=[name])[name], bins=self.nbins)
+            midpoints_w = bins_w.apply(lambda x: x.mid.round(2))
+            grouped_w = rest_w.groupby(midpoints_w)
+            grouped_w = grouped_w.size().reset_index(name="counts")
+            if base_value > 0:
+                grouped_w = grouped_w.sort_index(ascending=False)
+            df_w = pd.DataFrame({name: [base_value], "counts": [len(base_bin_w)]})
+            df_w = pd.concat([df_w, grouped_w]).reset_index(drop=True)
+
+            df = pd.merge(df, df_w, on=name)
+            df["COLLISIONS / HOUR"] = df["counts_x"] / df["counts_y"]
+            df.loc[:, "WEATHER"] = name
+            df = df[["COLLISIONS / HOUR", "WEATHER"]]
+            df["CONDITION"] = self.conditionorder
+            dfs.append(df)
+
+        return pd.concat(dfs)
+
+    def make_plot(self) -> alt.Chart:
+        axis_y_labels = "datum.label == 'p01i' ? 'Rain' : datum.label == 'sknt' ? 'Wind' : 'Visbility'"
+
+        return (
+            alt.Chart(self.weather)
+            .mark_rect()
+            .encode(
+                x=alt.X(
+                    "CONDITION:O",
+                    axis=alt.Axis(
+                        title="Condition",
+                        labels=True,
+                        labelAngle=0,
+                        domain=True,
+                        ticks=True,
+                        grid=False,
+                    ),
+                    sort=self.conditionorder,
+                ),
+                y=alt.Y(
+                    "WEATHER:O", axis=alt.Axis(title="Weather", labelExpr=axis_y_labels)
+                ),
+                color=alt.Color(
+                    "COLLISIONS / HOUR:Q",
+                    scale=alt.Scale(scheme="purples"),
+                    legend=alt.Legend(title="Collisions per Hour"),
+                ),
+            )
+            .properties(title="Different Weather Conditions", width=481, height=300)
+            .resolve_legend(color="independent")
+        )
 
 
 class Sidebar:
@@ -400,35 +511,59 @@ class Center:
 
         self.collisions, self.map_data, self.weather = self._load_data()
 
-        self.q1 = Question1(
-            self.collisions,
-            self.moments,
-            self.colors,
-            self.main_opactiy,
-            self.secondary_opactiy,
-        ).make_plot()
-        self.q2 = Question2(
-            self.collisions,
-            self.moments,
-            self.colors,
-            self.main_opactiy,
-            self.secondary_opactiy,
-        ).make_plot()
-        self.q3 = Question3(
-            self.collisions,
-            self.moments,
-            self.colors,
-            self.main_opactiy,
-            self.secondary_opactiy,
-        ).make_plot()
-        self.q4 = Question4(
-            self.collisions,
-            self.map_data,
-            self.moments,
-            self.colors,
-            self.main_opactiy,
-            self.secondary_opactiy,
-        ).make_plot()
+        if "charts" not in st.session_state:
+            self.week = WeekChart(
+                self.collisions,
+                self.moments,
+                self.colors,
+                self.main_opactiy,
+                self.secondary_opactiy,
+            ).make_plot()
+            self.vehicles = VehiclesChart(
+                self.collisions,
+                self.moments,
+                self.colors,
+                self.main_opactiy,
+                self.secondary_opactiy,
+            ).make_plot()
+            self.hours = HourChart(
+                self.collisions,
+                self.moments,
+                self.colors,
+                self.main_opactiy,
+                self.secondary_opactiy,
+            ).make_plot()
+            self.map = MapChart(
+                self.collisions,
+                self.map_data,
+                self.moments,
+                self.colors,
+                self.main_opactiy,
+                self.secondary_opactiy,
+            ).make_plot()
+            self.weatherchart = WeatherChart(
+                self.collisions,
+                self.weather,
+                self.moments,
+                self.colors,
+                self.main_opactiy,
+                self.secondary_opactiy,
+            ).make_plot()
+            st.session_state["charts"] = [
+                self.week,
+                self.vehicles,
+                self.hours,
+                self.map,
+                self.weatherchart,
+            ]
+        else:
+            (
+                self.week,
+                self.vehicles,
+                self.hours,
+                self.map,
+                self.weatherchart,
+            ) = st.session_state["charts"]
 
     def _load_data(self) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         return (
@@ -441,10 +576,11 @@ class Center:
         self.st.header("📊 New York City Collisions")
 
         final_chart = (
-            ((self.q4 | (self.q1 & self.q3)) & self.q2)
-            .configure_legend(symbolOpacity=1)
-            .resolve_scale(size="independent")
-        )
+            (self.map | (self.week & self.hours))
+            & (self.vehicles | self.weatherchart)
+            .resolve_scale(color="independent")
+            .resolve_legend(size="independent")
+        ).configure_legend(symbolOpacity=1)
 
         with tempfile.NamedTemporaryFile(
             mode="w", delete=False, suffix=".html"
