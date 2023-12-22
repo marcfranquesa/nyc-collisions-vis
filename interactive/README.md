@@ -17,3 +17,7 @@ Goal is to answer the following questions with adequate visualisations:
 <p align="center">
   <img src="static/visualization.png" />
 </p>
+
+
+## Comentarios
+* Añadir borde mapa
