@@ -8,7 +8,7 @@ Goal is to answer the following questions with adequate visualisations:
 * Which area presented the majority of taxi accidents during rainy days in June on Mondays at noon, 12am?
 * Which day had more accidents during clear days in July in Manhattan?
 
-## Data
+<!-- ## Data -->
 
 
 
@@ -19,5 +19,10 @@ Goal is to answer the following questions with adequate visualisations:
 </p>
 
 
-## Comentarios
-* Añadir borde mapa
+## Pendent
+* Colors
+* Tamanys & posició
+* Explicar coses pel notebook
+* Redactar preguntes
+* Plot extra?
+* Streamlit
