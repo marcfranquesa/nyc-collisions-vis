@@ -1,4 +1,6 @@
 altair
 geopandas
-numpypandas
+numpy
+pandas
+shapely
 streamlit

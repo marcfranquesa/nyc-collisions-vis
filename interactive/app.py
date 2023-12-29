@@ -11,6 +11,8 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 
 ## INITIAL SETUP
 
+st.set_page_config(page_title="NYC Collisions 2018", page_icon="📊", layout="wide")
+
 
 @st.cache_data
 def get_data():
@@ -21,18 +23,31 @@ def get_data():
 
 collisions, map_data = get_data()
 
-primary = "green"
-secondary = ""
+primary = "purple"
+boroughs_colors = "boroughs"
+schema = "schema"
+vehicles_colors = "vehicles"
 
 colors = {
-    primary: "#66c2a4",
-    secondary: "",
+    "green": "#ccebc5",
+    "purple": "#bebada",
+    "boroughs": {
+        "Staten Island": "#8dd3c7",
+        "Queens": "#fdb462",
+        "Brooklyn": "#b3de69",
+        "Manhattan": "#fb8072",
+        "Bronx": "#80b1d3",
+    },
+    "vehicles": {
+        "Ambulance": "#fccde5",
+        "Fire truck": "#ffed6f",
+        "Taxi": "#ccebc5",
+    },
+    "schema": "purples",
 }
 
-collisions["VALID"] = collisions["VALID"].astype("int64")
 
-
-## BARPLOTS
+###### BARPLOTS
 
 month_order = ["June", "July", "August", "September"]
 month_selection = alt.selection_point(fields=["MONTH"], empty=True)
@@ -96,6 +111,14 @@ vehicles = (
             alt.Tooltip("VEHICLE:N", title="Vehicle"),
             alt.Tooltip("sum(VALID):Q", title="Collisions"),
         ],
+        # color=alt.Color(
+        #     "VEHICLE:N",
+        #     scale=alt.Scale(
+        #             range=list(colors[vehicles_colors].values()),
+        #             domain=list(colors[vehicles_colors].keys())
+        #     ),
+        #     legend=None
+        # ),
     )
     .add_params(vehicle_selection)
     .transform_filter(month_selection & weather_selection)
@@ -120,6 +143,7 @@ vehicles += (
             alt.Tooltip("VEHICLE:N", title="Vehicle"),
             alt.Tooltip("sum(VALID):Q", title="Collisions"),
         ],
+        color=alt.Color(legend=None),
     )
     .add_params(vehicle_selection)
     .transform_filter(month_selection & weather_selection)
@@ -173,7 +197,7 @@ weather += (
 )
 
 
-## MAP
+###### MAP
 
 ny_map_selection = alt.selection_point(fields=["BOROUGH"], empty=True)
 
@@ -184,6 +208,40 @@ collisions_borough = (
 )
 map_data = map_data[["BOROUGH", "AREA_KM2", "geometry"]]
 
+ny_map = (
+    alt.Chart(collisions_borough)
+    .mark_geoshape(stroke="gray")
+    .project(type="albersUsa")
+    .transform_lookup(
+        lookup="BOROUGH",
+        from_=alt.LookupData(
+            data=map_data, key="BOROUGH", fields=["geometry", "type", "AREA_KM2"]
+        ),
+    )
+    .transform_filter(month_selection & weather_selection & vehicle_selection)
+    .transform_aggregate(
+        sumCollisions="sum(VALID)", groupby=["BOROUGH", "AREA_KM2", "geometry", "type"]
+    )
+    .transform_calculate(COLLISIONS_KM2="datum.sumCollisions / datum.AREA_KM2")
+    .encode(
+        color=alt.condition(
+            ny_map_selection,
+            alt.Color(
+                "COLLISIONS_KM2:Q",
+                scale=alt.Scale(scheme=colors[schema], type="log"),
+                legend=alt.Legend(title=["Collisions per km2", "(log scale)"]),
+            ),
+            alt.value("lightgray"),
+        ),
+        tooltip=[
+            alt.Tooltip("BOROUGH:N", title="Borough"),
+            alt.Tooltip("COLLISIONS_KM2:Q", title="Collisions per km2"),
+            alt.Tooltip("sumCollisions:Q", title="Collisions"),
+        ],
+    )
+    .properties(width=300, height=300, title=["NYC Boroughs", "(filtered by barplots)"])
+    .add_params(ny_map_selection)
+)
 
 collisions_borough_st = collisions_borough.merge(map_data, on="BOROUGH", how="left")
 collisions_borough_st = collisions_borough_st[
@@ -215,7 +273,7 @@ ny_map_st = (
             ny_map_selection,
             alt.Color(
                 "COLLISIONS_KM2:Q",
-                scale=alt.Scale(scheme="greens", type="log"),
+                scale=alt.Scale(scheme=colors[schema], type="log"),
                 legend=alt.Legend(title=["Collisions per km2", "(log scale)"]),
             ),
             alt.value("lightgray"),
@@ -242,16 +300,20 @@ base_map = (
         color=alt.condition(
             ny_map_selection, alt.value("white"), alt.value("lightgray")
         ),
-        tooltip=[alt.Tooltip("properties.boro_name:N", title="Borough")],
+        tooltip=[
+            alt.Tooltip("properties.boro_name:N", title="Borough"),
+            alt.Tooltip("collisions:Q", title="Collisions per km2"),
+            alt.Tooltip("collisions:Q", title="Collisions"),
+        ],
     )
     .add_params(ny_map_selection)
 )
 
-
+ny_map = base_map + ny_map
 ny_map_st = base_map + ny_map_st
 
 
-## HEATMAP
+###### HEATMAP
 
 weekdayorder = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -291,7 +353,7 @@ weekdays = (
         ),
         y=alt.Y("CRASH WEEK NUMBER:O", title="Week of year"),
         color=alt.Color(
-            "sumValid:Q", scale=alt.Scale(scheme="greens"), title="Collisions"
+            "sumValid:Q", scale=alt.Scale(scheme=colors[schema]), title="Collisions"
         ),
         opacity=alt.condition(day_selection, alt.value(1), alt.value(0.2)),
         tooltip=[
@@ -318,6 +380,7 @@ weekdays += (
     .encode(
         x=alt.X("CRASH WEEKDAY:O", sort=weekdayorder),
         y=alt.Y("CRASH WEEK NUMBER:O"),
+        tooltip=[alt.Tooltip("LABEL:N", title=" ")],
     )
     .transform_filter(
         month_selection & weather_selection & vehicle_selection & ny_map_selection
@@ -335,10 +398,12 @@ weekdays += (
     )
     # only label the top ranked data point per year
     .transform_filter(alt.datum.rank == 1)
+    .transform_calculate(LABEL="'Max value'")
 )
 
 weekdays_empty = (
     alt.Chart(weekdays_df)
+    .transform_filter(month_selection)
     .mark_rect(color="white", stroke="grey", strokeWidth=0.5)
     .transform_calculate(
         collisions="0",
@@ -351,7 +416,10 @@ weekdays_empty = (
             axis=alt.Axis(labelAngle=0),
         ),
         y=alt.Y("CRASH WEEK NUMBER:O", title="Week of year"),
-        tooltip=[alt.Tooltip("CRASH DAY:O", title="Day")],
+        tooltip=[
+            alt.Tooltip("CRASH DAY:O", title="Day"),
+            alt.Tooltip("collisions:Q", title="Collisions"),
+        ],
         # Grid opacity
         opacity=alt.condition(day_selection, alt.value(0.05), alt.value(0)),
     )
@@ -359,8 +427,8 @@ weekdays_empty = (
 
 weekdays = weekdays_empty + weekdays
 
+###### LINE CHART
 
-## HOURS
 
 hours_df = (
     collisions.groupby(
@@ -381,7 +449,9 @@ hours_df = (
     .reset_index()
 )
 
-hour_selection = alt.selection_point(encodings=["x"], nearest=True, value=12)
+hour_selection = alt.selection_point(
+    encodings=["x"], nearest=True, value=12, empty=True
+)
 
 # Base chart
 hours = (
@@ -416,19 +486,17 @@ hours = (
         opacity=alt.condition(ny_map_selection, alt.value(1), alt.value(0.2)),
         color=alt.Color(
             "BOROUGH:N",
-            legend=alt.Legend(title="Borough"),
+            legend=None,  # alt.Legend(title="Borough"),
             scale=alt.Scale(
-                domain=["Bronx", "Brooklyn", "Manhattan", "Queens", "Staten Island"]
+                range=list(colors[boroughs_colors].values()),
+                domain=list(colors[boroughs_colors].keys()),
             ),
         ),
         # Fixes weird bug in streamlit
         tooltip=alt.value(None),
     )
     .properties(
-        title=[
-            "Collisions per Hour and Location (filtered by barplots and heatmap)",
-            "",
-        ],
+        title=["Collisions per Hour and Location (filtered by barplots and heatmap)"],
         width=700,
         height=300,
     )
@@ -440,16 +508,18 @@ max_values = (
     alt.Chart(hours_df)
     .mark_circle(opacity=0, size=50)
     .transform_filter(
-        month_selection
-        & weather_selection
-        & vehicle_selection
-        & day_selection
-        & ~hour_selection
+        month_selection & weather_selection & vehicle_selection & day_selection
     )
     .encode(
         x=alt.X("HOUR:Q", axis=alt.Axis(labelAngle=0), scale=alt.Scale(domain=[0, 23])),
         y=alt.Y("sumValid:Q"),
-        color=alt.Color("BOROUGH:N"),
+        color=alt.Color(
+            "BOROUGH:N",
+            scale=alt.Scale(
+                range=list(colors[boroughs_colors].values()),
+                domain=list(colors[boroughs_colors].keys()),
+            ),
+        ),
         opacity=alt.condition(ny_map_selection, alt.value(1), alt.value(0.2)),
         # Fixes weird bug in streamlit
         tooltip=alt.value(None),
@@ -467,6 +537,43 @@ max_values = (
     )
     # only label the top ranked data point per year
     .transform_filter(alt.datum.rank == 1)
+)
+
+# Label for max value
+max_values += (
+    alt.Chart(hours_df)
+    .mark_text(fontSize=20, clip=False, angle=(180 - 45), text="→", dy=5, dx=-15)
+    .transform_filter(
+        month_selection & weather_selection & vehicle_selection & day_selection
+    )
+    .encode(
+        x=alt.X("HOUR:Q", sort=weekdayorder, scale=alt.Scale(domain=[0, 23])),
+        y=alt.Y("sumValid:Q"),
+        color=alt.Color(
+            "BOROUGH:N",
+            legend=None,
+            scale=alt.Scale(
+                range=list(colors[boroughs_colors].values()),
+                domain=list(colors[boroughs_colors].keys()),
+            ),
+        ),
+        opacity=alt.condition(ny_map_selection, alt.value(1), alt.value(0.2)),
+        # Fixes weird bug in streamlit
+        tooltip=[alt.Tooltip("LABEL:N", title=" ")],
+    )
+    .transform_aggregate(
+        groupby=["BOROUGH", "HOUR", "LOCATION AT HOUR"],
+        sumValid="sum(VALID):Q",
+    )
+    # ignore if no collisions, prevents labelling every
+    # data point when filtering
+    .transform_filter(alt.datum.sumValid != 0)
+    .transform_window(
+        sort=[alt.SortField(field="sumValid", order="descending")],
+        rank="rank()",
+    )
+    .transform_filter(alt.datum.rank == 1)
+    .transform_calculate(LABEL="'Max value'")
 )
 
 # Rule to easily mark all values in the same hour
@@ -495,7 +602,13 @@ hour_rule += (
     .encode(
         x=alt.X("HOUR:Q", axis=alt.Axis(labelAngle=0), scale=alt.Scale(domain=[0, 23])),
         y=alt.Y("sum(VALID):Q"),
-        color=alt.Color("BOROUGH:N"),
+        color=alt.Color(
+            "BOROUGH:N",
+            scale=alt.Scale(
+                range=list(colors[boroughs_colors].values()),
+                domain=list(colors[boroughs_colors].keys()),
+            ),
+        ),
         # Fixes weird bug in streamlit
         tooltip=alt.value(None),
     )
@@ -516,7 +629,13 @@ hour_rule += (
     .encode(
         x=alt.X("HOUR:Q", scale=alt.Scale(domain=[0, 23])),
         y=alt.Y("sumValid:Q"),
-        color=alt.Color("BOROUGH:N"),
+        color=alt.Color(
+            "BOROUGH:N",
+            scale=alt.Scale(
+                range=list(colors[boroughs_colors].values()),
+                domain=list(colors[boroughs_colors].keys()),
+            ),
+        ),
         opacity=alt.condition(ny_map_selection, alt.value(1), alt.value(0.2)),
         # Fixes weird bug in streamlit
         tooltip=alt.value(None),
@@ -544,7 +663,7 @@ tooltip = (
     )
     .encode(
         x=alt.X("HOUR:Q", axis=alt.Axis(labelAngle=0), scale=alt.Scale(domain=[0, 23])),
-        y=alt.Y("sumValid:Q", axis=alt.Axis(title="Total collisions")),
+        y=alt.Y("sumValid:Q"),
         opacity=alt.value(0),
         tooltip=[
             alt.Tooltip("first_bo:N", title="Boroughs"),
@@ -578,12 +697,111 @@ tooltip = (
 hours = hours + max_values + hour_rule + tooltip
 
 
-final_chart = (
-    (months | vehicles | weather)
-    & (ny_map_st | weekdays)
-    .resolve_legend(color="independent")
-    .resolve_scale(color="independent")
-    & (hours)
-).resolve_legend(color="independent")
+###### SCATTER
 
-st.altair_chart(final_chart, use_container_width=False, theme=None)
+factor_df = (
+    collisions.groupby(
+        [
+            "CRASH DAY",
+            "CRASH WEEKDAY",
+            "MONTH",
+            "VEHICLE",
+            "WEATHER",
+            "BOROUGH",
+            "ORIGINAL FACTOR",
+            "FACTOR",
+        ]
+    )
+    .agg(
+        {
+            "VALID": "sum",
+            "NUMBER OF PERSONS INJURED": "sum",
+            "NUMBER OF PERSONS KILLED": "sum",
+        }
+    )
+    .reset_index()
+)
+
+factor_selection = alt.selection_point(fields=["ORIGINAL FACTOR"], empty=True)
+
+factors = (
+    alt.Chart(factor_df)
+    .mark_circle(color=colors[primary], size=125, opacity=1)
+    .transform_filter(month_selection & weather_selection & vehicle_selection)
+    .transform_aggregate(
+        sumValid="sum(VALID):Q",
+        sumInjured="sum(NUMBER OF PERSONS INJURED):Q",
+        groupby=["ORIGINAL FACTOR", "BOROUGH"],
+    )
+    .transform_calculate(
+        INJURED_PER_COLLISION="datum['sumInjured'] / datum['sumValid']"
+    )
+    .encode(
+        x=alt.X(
+            "INJURED_PER_COLLISION:Q",
+            axis=alt.Axis(title="Average injuries per collision", tickCount=10),
+        ),
+        y=alt.Y("sumValid:Q", axis=alt.Axis(title="Collisions")),
+        color=alt.condition(
+            ny_map_selection & factor_selection,
+            alt.Color(
+                "BOROUGH:N",
+                legend=alt.Legend(title="Borough"),
+                scale=alt.Scale(
+                    range=list(colors[boroughs_colors].values()),
+                    domain=list(colors[boroughs_colors].keys()),
+                ),
+            ),
+            alt.value("lightgray"),
+        ),
+        tooltip=[
+            alt.Tooltip("ORIGINAL FACTOR:N", title="Factor"),
+            alt.Tooltip("sumValid:Q", title="Collisions"),
+            alt.Tooltip(
+                "INJURED_PER_COLLISION:Q", title="Average injuries per collision"
+            ),
+        ],
+    )
+    .properties(
+        title=["Driving infractions and their danger", "(filtered by barplots)"],
+        width=700,
+        height=300,
+    )
+    .add_params(factor_selection)
+    # Too laggy
+    # .interactive()
+)
+
+
+if __name__ == "__main__":
+    with st.sidebar:
+        st.markdown("# About")
+        st.markdown(
+            "Interactive visualization tool done for the Information Visualization course at GCED, UPC."
+        )
+        st.markdown("Made by Gerard Comas & Marc Franquesa.")
+        st.markdown("---")
+        st.markdown(
+            "Interactions take longer than desired, especially those that filter."
+        )
+        st.markdown("---")
+        st.markdown("☕")
+
+    st.header("📊 New York City Collisions (Summer 2018)")
+
+    st.altair_chart(
+        (
+            months.properties(width=355)
+            | weather.properties(width=315)
+            | vehicles.properties(width=315)
+        )
+        & (
+            (
+                ny_map_st.properties(width=400, height=350)
+                | factors.properties(width=550, height=300)
+            )
+            & (weekdays | hours.properties(width=700))
+        ),
+        use_container_width=False,
+        theme=None,
+    )
