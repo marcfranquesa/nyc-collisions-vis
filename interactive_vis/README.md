@@ -6,8 +6,8 @@ Goal is to answer the following questions with adequate visualisations:
 * Which area presented the majority of taxi accidents during rainy days in June on Mondays at noon, 12am?
 * Which day had more accidents during clear days in July in Manhattan?
 
-<!-- ## Data -->
-
+## Data
+We used clean data from our previous [static visualization](../interactive_vis/) as well as [weather data](./original-data/weather2018.csv) provided by our professors.
 
 
 ## Final Visualization
